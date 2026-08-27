@@ -5,6 +5,15 @@ import ContactForm from "@/components/contacts/ContactForm";
 import { makeContact } from "../mocks/handlers";
 import type { FormState } from "@/lib/contacts/types";
 
+const PNG_BYTES = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+const PHOTO =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+/** The avatar preview. `alt=""` makes it presentational, so query the DOM. */
+function photoPreview(): HTMLImageElement | null {
+  return document.querySelector("form img");
+}
+
 function renderForm(action: jest.Mock, contact?: ReturnType<typeof makeContact>) {
   return render(
     <ContactForm
@@ -78,6 +87,62 @@ describe("ContactForm", () => {
       "aria-invalid",
       "true",
     );
+  });
+
+  it("carries an existing photo through a submit untouched", async () => {
+    // The edit form is a full PUT replace, so a photo the user never touched
+    // has to come back out of the form or saving would wipe it.
+    const action = jest.fn<Promise<FormState>, [FormState, FormData]>(
+      async () => ({ status: "idle" }),
+    );
+    renderForm(action, makeContact({ photo: PHOTO }));
+
+    expect(photoPreview()).toHaveAttribute("src", PHOTO);
+
+    await userEvent.click(screen.getByRole("button", { name: /create contact/i }));
+    await waitFor(() => expect(action).toHaveBeenCalled());
+
+    expect(action.mock.calls[0][1].get("photo")).toBe(PHOTO);
+  });
+
+  it("encodes a picked file into the submitted photo", async () => {
+    const action = jest.fn<Promise<FormState>, [FormState, FormData]>(
+      async () => ({ status: "idle" }),
+    );
+    renderForm(action);
+
+    // No photo yet: the field submits nothing and shows no image.
+    expect(photoPreview()).toBeNull();
+
+    await userEvent.upload(
+      screen.getByLabelText(/^photo/i),
+      new File([PNG_BYTES], "ada.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => expect(photoPreview()).not.toBeNull());
+    const src = photoPreview()!.getAttribute("src");
+    expect(src).toMatch(/^data:image\/png;base64,/);
+
+    await userEvent.click(screen.getByRole("button", { name: /create contact/i }));
+    await waitFor(() => expect(action).toHaveBeenCalled());
+
+    expect(action.mock.calls[0][1].get("photo")).toBe(src);
+  });
+
+  it("clears the photo when the user removes it", async () => {
+    const action = jest.fn<Promise<FormState>, [FormState, FormData]>(
+      async () => ({ status: "idle" }),
+    );
+    renderForm(action, makeContact({ photo: PHOTO }));
+
+    await userEvent.click(screen.getByRole("button", { name: /remove/i }));
+    expect(photoPreview()).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: /create contact/i }));
+    await waitFor(() => expect(action).toHaveBeenCalled());
+
+    // Empty, not the old data URL: PUT then clears it on the API side too.
+    expect(action.mock.calls[0][1].get("photo")).toBe("");
   });
 
   it("links back out without submitting", () => {

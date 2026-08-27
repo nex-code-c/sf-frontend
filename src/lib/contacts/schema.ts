@@ -52,6 +52,14 @@ export const contactInputSchema = z.object({
     .transform((value) => value || null)
     .nullable()
     .default(null),
+  // Already a data URL by the time it reaches here: PhotoField encodes the
+  // picked file and submits it through a hidden input.
+  photo: z
+    .string()
+    .trim()
+    .transform((value) => value || null)
+    .nullable()
+    .default(null),
 }) satisfies z.ZodType<ContactInput, unknown>;
 
 export type ContactFormValues = z.input<typeof contactInputSchema>;
@@ -77,7 +85,7 @@ export function zodFieldErrors(
 export interface ContactFieldSpec {
   name: keyof ContactInput;
   label: string;
-  type?: "text" | "email" | "tel" | "textarea";
+  type?: "text" | "email" | "tel" | "textarea" | "photo";
   required?: boolean;
   maxLength: number;
   placeholder?: string;
@@ -93,6 +101,20 @@ export interface ContactFieldGroup {
 }
 
 export const CONTACT_FIELD_GROUPS: ContactFieldGroup[] = [
+  {
+    title: "Photo",
+    description: "Optional headshot, shown as this contact's avatar.",
+    fields: [
+      {
+        name: "photo",
+        label: "Photo",
+        type: "photo",
+        // A data URL is roughly 4/3 the size of the file it encodes.
+        maxLength: 4_000_000,
+        wide: true,
+      },
+    ],
+  },
   {
     title: "Identity",
     description: "First name, last name, and email are required.",

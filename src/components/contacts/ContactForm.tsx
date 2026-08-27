@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { AlertCircle, Loader2 } from "lucide-react";
 import Field from "@/components/ui/Field";
+import PhotoField from "./PhotoField";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import { CONTACT_FIELD_GROUPS } from "@/lib/contacts/schema";
 import {
@@ -84,14 +85,24 @@ export default function ContactForm({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            {group.fields.map((field) => (
-              <Field
-                key={field.name}
-                field={field}
-                defaultValue={valueFor(field.name)}
-                error={state.fieldErrors?.[field.name]}
-              />
-            ))}
+            {group.fields.map((field) =>
+              field.type === "photo" ? (
+                <PhotoField
+                  key={field.name}
+                  field={field}
+                  defaultValue={valueFor(field.name)}
+                  error={state.fieldErrors?.[field.name]}
+                  contact={contact}
+                />
+              ) : (
+                <Field
+                  key={field.name}
+                  field={field}
+                  defaultValue={valueFor(field.name)}
+                  error={state.fieldErrors?.[field.name]}
+                />
+              ),
+            )}
           </div>
         </fieldset>
       ))}

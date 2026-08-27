@@ -18,6 +18,8 @@ export interface Contact {
   postal_code: string | null;
   country: string | null;
   notes: string | null;
+  /** Base64 data URL, ready to drop into an `<img src>`. */
+  photo: string | null;
   created_at: string;
   updated_at: string;
   full_name: string;

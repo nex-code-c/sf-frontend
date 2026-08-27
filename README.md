@@ -34,6 +34,8 @@ The landing route (`/` redirects here). What to check, top to bottom:
 - **Header** — `SFContacts` wordmark, `Contacts` / `New contact` nav with the
   current route highlighted, and the theme toggle on the right (dark is the
   default; the sun icon switches to light).
+- **Avatars** — a contact with a photo shows it cropped to the same circle;
+  everyone else keeps their initials bubble.
 - **`3 contacts` + the badge** — the count comes from the API's `total`, and the
   green-dotted `api ok · sqlite` pill is live `GET /health` output naming the
   backend's database. A red `api unreachable` here means the backend is down or
@@ -131,6 +133,12 @@ e2e/                      Playwright specs (run against the real API)
 
 ## Conventions
 
+- **Photos** — `PhotoField` reads the picked file into a base64 data URL and
+  parks it in a hidden `photo` input, so it submits with the rest of the form.
+  That is deliberate: the edit form is a `PUT` full replace, and the hidden
+  input starts out holding the contact's current photo, so leaving it untouched
+  resubmits the same value instead of clearing it. `ContactAvatar` renders that
+  data URL when there is one and falls back to the initials bubble otherwise.
 - **Forms** — one source of truth: `CONTACT_FIELD_GROUPS` in
   `src/lib/contacts/schema.ts` drives both the rendered fields and the Zod rules,
   which mirror the API's own limits. Submitting is a real form `action`, so it
