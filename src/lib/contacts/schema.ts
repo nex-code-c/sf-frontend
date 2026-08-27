@@ -56,11 +56,6 @@ export const contactInputSchema = z.object({
   phone: optionalText(40, "Phone"),
   company: optionalText(200, "Company"),
   job_title: optionalText(200, "Job title"),
-  address: optionalText(300, "Address"),
-  city: optionalText(120, "City"),
-  state: optionalText(120, "State"),
-  postal_code: optionalText(20, "Postal code"),
-  country: optionalText(120, "Country"),
   notes: z
     .string()
     .trim()
@@ -80,18 +75,30 @@ export const contactInputSchema = z.object({
 
 export type ContactFormValues = z.input<typeof contactInputSchema>;
 
-/** Collapse a ZodError into one message per field, keyed by input name. */
-export function zodFieldErrors(
-  error: z.ZodError,
-): Partial<Record<ContactScalarField, string>> {
+/**
+ * Collapse a ZodError into one message per field, keyed by input name.
+ *
+ * Only the contact's own fields have somewhere to render a message. An issue on
+ * an address (`addresses.0.street`) is reported through `addressErrors` instead,
+ * so a bad address is not rejected silently.
+ */
+export function zodFieldErrors(error: z.ZodError): {
+  fieldErrors: Partial<Record<ContactScalarField, string>>;
+  addressErrors: Record<number, string>;
+} {
   const fieldErrors: Partial<Record<ContactScalarField, string>> = {};
+  const addressErrors: Record<number, string> = {};
+
   for (const issue of error.issues) {
-    const key = issue.path[0];
-    if (typeof key === "string" && !(key in fieldErrors)) {
-      fieldErrors[key as ContactScalarField] = issue.message;
+    const [head, index] = issue.path;
+    if (head === "addresses" && typeof index === "number") {
+      addressErrors[index] ??= issue.message;
+    } else if (typeof head === "string" && SCALAR_FIELDS.has(head) && !(head in fieldErrors)) {
+      fieldErrors[head as ContactScalarField] = issue.message;
     }
   }
-  return fieldErrors;
+
+  return { fieldErrors, addressErrors };
 }
 
 /* ------------------------------------------------------------------ */
@@ -213,6 +220,9 @@ export const CONTACT_FIELDS: ContactScalarFieldSpec[] = CONTACT_FIELD_GROUPS.fla
   (group) => group.fields,
 );
 
+/** The contact's own fields, i.e. the ones the form has an input for. */
+const SCALAR_FIELDS = new Set<string>(CONTACT_FIELDS.map((field) => field.name));
+
 /** Pull the contact's scalar fields out of a submitted form, as raw strings. */
 export function formDataToValues(
   formData: FormData,
@@ -237,11 +247,12 @@ export const ADDRESS_FIELDS = [
 const ADDRESS_INPUT = /^addresses\.(\d+)\.([a-z_]+)$/;
 
 /**
- * Rebuild the address rows from a submitted form.
+ * Rebuild the address rows from a submitted form, in the order they appear.
  *
  * The inputs are named by position (`addresses.0.city`), which keeps them plain
- * form fields that submit without JavaScript. Rows the user added but never
- * filled in are dropped, so an empty row is not saved as a blank address.
+ * form fields that submit without JavaScript. Every row comes back, blanks
+ * included, so a validation issue on `addresses.1` lands on the second row the
+ * user is looking at. `isFilledAddress` drops the blanks on the way out.
  */
 export function formDataToAddresses(formData: FormData): AddressInput[] {
   const rows = new Map<number, Record<string, string>>();
@@ -257,9 +268,7 @@ export function formDataToAddresses(formData: FormData): AddressInput[] {
 
   return [...rows.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([, row]) => row)
-    .filter((row) => ADDRESS_FIELDS.some((field) => row[field.name]?.trim()))
-    .map((row) => ({
+    .map(([, row]) => ({
       type: (ADDRESS_TYPES as readonly string[]).includes(row.type)
         ? (row.type as AddressType)
         : "Home",
@@ -269,4 +278,9 @@ export function formDataToAddresses(formData: FormData): AddressInput[] {
       postal_code: row.postal_code?.trim() || null,
       country: row.country?.trim() || null,
     }));
+}
+
+/** A row the user actually filled in. `type` alone is just an untouched row. */
+export function isFilledAddress(address: AddressInput): boolean {
+  return ADDRESS_FIELDS.some((field) => address[field.name]);
 }

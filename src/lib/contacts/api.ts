@@ -5,6 +5,7 @@ import type {
   Contact,
   ContactInput,
   ContactPage,
+  ContactScalarField,
   HealthResponse,
   SortField,
   SortOrder,
@@ -122,20 +123,26 @@ export function apiErrorMessage(error: ApiError, fallback: string): string {
 
 /**
  * Turn a 422 `HTTPValidationError` into per-field messages. FastAPI reports the
- * location as `["body", "<field>"]`, so the second element is the input name.
+ * location as `["body", "<field>"]`, so the second element is the input name —
+ * or `["body", "addresses", 0, "street"]` for an issue inside an address, which
+ * belongs to a row rather than to a field of the contact.
  */
-export function toFieldErrors(
-  error: ApiError,
-): Partial<Record<keyof ContactInput, string>> {
+export function toFieldErrors(error: ApiError): {
+  fieldErrors: Partial<Record<ContactScalarField, string>>;
+  addressErrors: Record<number, string>;
+} {
   const detail = error.json<{ detail?: ValidationIssue[] }>()?.detail;
-  if (!Array.isArray(detail)) return {};
+  const fieldErrors: Partial<Record<ContactScalarField, string>> = {};
+  const addressErrors: Record<number, string> = {};
+  if (!Array.isArray(detail)) return { fieldErrors, addressErrors };
 
-  const fieldErrors: Partial<Record<keyof ContactInput, string>> = {};
   for (const issue of detail) {
-    const field = issue.loc?.[issue.loc.length - 1];
-    if (typeof field === "string" && field !== "body") {
-      fieldErrors[field as keyof ContactInput] ??= issue.msg;
+    const [, head, index] = issue.loc ?? [];
+    if (head === "addresses" && typeof index === "number") {
+      addressErrors[index] ??= issue.msg;
+    } else if (typeof head === "string") {
+      fieldErrors[head as ContactScalarField] ??= issue.msg;
     }
   }
-  return fieldErrors;
+  return { fieldErrors, addressErrors };
 }

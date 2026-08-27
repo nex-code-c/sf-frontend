@@ -46,14 +46,35 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /**
+ * Does the painted image actually use its alpha channel?
+ *
+ * Assumes it does when the pixels cannot be read — a browser that blocks
+ * `getImageData` should cost a larger PNG, not a photo with a black background.
+ */
+function hasTransparency(context: CanvasRenderingContext2D, width: number, height: number): boolean {
+  let pixels: Uint8ClampedArray;
+  try {
+    pixels = context.getImageData(0, 0, width, height).data;
+  } catch {
+    return true;
+  }
+
+  for (let i = 3; i < pixels.length; i += 4) {
+    if (pixels[i] < 255) return true;
+  }
+  return false;
+}
+
+/**
  * Shrink the picked image to avatar size before it is ever submitted.
  *
  * A photo travels inside the contact JSON, so a 2MB upload would otherwise sit
  * in every list response and blow past the 1MB server action body limit. At
  * 512px it lands in the tens of KB and still renders sharp on a retina avatar.
  *
- * Best effort: if the browser cannot decode or paint the image, the original
- * data URL is kept rather than losing the user's photo.
+ * Throws when the browser cannot decode the file. A filename and a `type` are
+ * not proof that the bytes are an image, and keeping the original on failure
+ * would store something no `<img>` can render.
  */
 async function toAvatarDataUrl(dataUrl: string): Promise<string> {
   const canvas = document.createElement("canvas");
@@ -61,18 +82,18 @@ async function toAvatarDataUrl(dataUrl: string): Promise<string> {
   // No canvas to paint on: keep the photo rather than dropping it.
   if (!context) return dataUrl;
 
-  try {
-    const image = await loadImage(dataUrl);
-    const scale = Math.min(1, MAX_EDGE / Math.max(image.width, image.height));
+  const image = await loadImage(dataUrl);
+  const scale = Math.min(1, MAX_EDGE / Math.max(image.width, image.height));
 
-    canvas.width = Math.max(1, Math.round(image.width * scale));
-    canvas.height = Math.max(1, Math.round(image.height * scale));
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-    return canvas.toDataURL("image/jpeg", 0.85);
-  } catch {
-    return dataUrl;
-  }
+  // JPEG has no alpha channel, so exporting a transparent image as one paints
+  // the see-through pixels black. Only opaque photos take the cheaper encoding.
+  return hasTransparency(context, canvas.width, canvas.height)
+    ? canvas.toDataURL("image/png")
+    : canvas.toDataURL("image/jpeg", 0.85);
 }
 
 /** Why a picked file was rejected, or `null` when it is fine. */
@@ -101,14 +122,18 @@ export default function PhotoField({
   defaultValue = "",
   error,
   contact,
+  onBusyChange,
 }: {
   field: ContactFieldSpec;
   defaultValue?: string;
   error?: string;
   contact?: Pick<Contact, "first_name" | "last_name" | "email">;
+  /** Told when a pick is still converting, so the form can hold the submit. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [photo, setPhoto] = useState(defaultValue);
   const [readError, setReadError] = useState<string | null>(null);
+  const [busy, setBusyState] = useState(false);
   // Reading a file is async, so a fast second pick could otherwise be overtaken
   // by the first one finishing. Only the newest request is allowed to land.
   const latestPick = useRef(0);
@@ -116,6 +141,11 @@ export default function PhotoField({
   const id = `field-${field.name}`;
   const errorId = `${id}-error`;
   const message = error ?? readError;
+
+  function setBusy(value: boolean) {
+    setBusyState(value);
+    onBusyChange?.(value);
+  }
 
   async function handleChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -128,9 +158,12 @@ export default function PhotoField({
     const rejection = rejectionReason(file);
     if (rejection) {
       setReadError(rejection);
+      // Anything still converting has just been outranked, so nothing is coming.
+      setBusy(false);
       return;
     }
 
+    setBusy(true);
     try {
       const dataUrl = await toAvatarDataUrl(await readAsDataUrl(file));
       if (pick !== latestPick.current) return;
@@ -138,7 +171,9 @@ export default function PhotoField({
       setReadError(null);
     } catch {
       if (pick !== latestPick.current) return;
-      setReadError("That file could not be read. Try another one.");
+      setReadError("That image could not be read. Try another one.");
+    } finally {
+      if (pick === latestPick.current) setBusy(false);
     }
   }
 
@@ -147,6 +182,7 @@ export default function PhotoField({
     latestPick.current += 1;
     setPhoto("");
     setReadError(null);
+    setBusy(false);
   }
 
   return (
@@ -204,10 +240,12 @@ export default function PhotoField({
             ) : null}
           </div>
 
-          <p className="text-[12px] text-muted-foreground">
-            {photo
-              ? "Saved with the contact and shown as their avatar."
-              : "PNG, JPEG, GIF, or WebP under 2 MB. Without one the contact keeps their initials."}
+          <p className="text-[12px] text-muted-foreground" aria-live="polite">
+            {busy
+              ? "Preparing the photo…"
+              : photo
+                ? "Saved with the contact and shown as their avatar."
+                : "PNG, JPEG, GIF, or WebP under 2 MB. Without one the contact keeps their initials."}
           </p>
         </div>
       </div>

@@ -14,6 +14,7 @@ import {
   contactInputSchema,
   formDataToAddresses,
   formDataToValues,
+  isFilledAddress,
   zodFieldErrors,
 } from "@/lib/contacts/schema";
 import type { Contact, FormState } from "@/lib/contacts/types";
@@ -47,18 +48,24 @@ export async function saveContactAction(
     return {
       status: "error",
       message: "Please fix the highlighted fields.",
-      fieldErrors: zodFieldErrors(parsed.error),
+      ...zodFieldErrors(parsed.error),
       values,
       addresses,
     };
   }
 
+  // Rows the user added but never filled in are not addresses worth saving.
+  const input = {
+    ...parsed.data,
+    addresses: parsed.data.addresses.filter(isFilledAddress),
+  };
+
   let saved: Contact;
   try {
     saved =
       contactId === null
-        ? await createContact(parsed.data)
-        : await replaceContact(contactId, parsed.data);
+        ? await createContact(input)
+        : await replaceContact(contactId, input);
   } catch (error) {
     if (error instanceof ApiUnreachableError) {
       return { status: "error", message: UNREACHABLE, values, addresses };
@@ -79,7 +86,7 @@ export async function saveContactAction(
         return {
           status: "error",
           message: "The API rejected these values.",
-          fieldErrors: toFieldErrors(error),
+          ...toFieldErrors(error),
           values,
           addresses,
         };

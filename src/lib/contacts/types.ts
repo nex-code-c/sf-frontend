@@ -95,6 +95,8 @@ export type FormState = {
   message?: string;
   /** Per-field messages keyed by input name. */
   fieldErrors?: Partial<Record<ContactScalarField, string>>;
+  /** Per-address messages, keyed by the row's position in `addresses`. */
+  addressErrors?: Record<number, string>;
   /** Echo of the submitted values so the form survives a failed round trip. */
   values?: Partial<Record<ContactScalarField, string>>;
   /** Echo of the submitted addresses, so added rows survive a failed submit. */

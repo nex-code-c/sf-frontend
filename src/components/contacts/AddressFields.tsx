@@ -23,8 +23,11 @@ interface Row {
  */
 export default function AddressFields({
   addresses = [],
+  errors,
 }: {
   addresses?: AddressInput[];
+  /** Per-row messages from a failed submit, keyed by the row's position. */
+  errors?: Record<number, string>;
 }) {
   const prefix = useId();
   const [rows, setRows] = useState<Row[]>(() =>
@@ -98,6 +101,12 @@ export default function AddressFields({
               Remove
             </button>
           </div>
+
+          {errors?.[index] ? (
+            <p role="alert" className="text-[13px] text-destructive">
+              {errors[index]}
+            </p>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             {ADDRESS_FIELDS.map((field) => (

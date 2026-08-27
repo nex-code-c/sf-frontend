@@ -153,12 +153,34 @@ describe("error translation", () => {
     );
 
     expect(toFieldErrors(error)).toEqual({
-      email: "value is not a valid email address",
-      first_name: "String should have at least 1 character",
+      fieldErrors: {
+        email: "value is not a valid email address",
+        first_name: "String should have at least 1 character",
+      },
+      addressErrors: {},
+    });
+  });
+
+  it("keeps an issue inside an address on its row", () => {
+    const error = new ApiError(
+      422,
+      JSON.stringify({
+        detail: [
+          { loc: ["body", "addresses", 1, "postal_code"], msg: "String should have at most 20 characters" },
+        ],
+      }),
+    );
+
+    expect(toFieldErrors(error)).toEqual({
+      fieldErrors: {},
+      addressErrors: { 1: "String should have at most 20 characters" },
     });
   });
 
   it("returns nothing for a non-validation body", () => {
-    expect(toFieldErrors(new ApiError(500, "boom"))).toEqual({});
+    expect(toFieldErrors(new ApiError(500, "boom"))).toEqual({
+      fieldErrors: {},
+      addressErrors: {},
+    });
   });
 });

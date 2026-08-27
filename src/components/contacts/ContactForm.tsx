@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { AlertCircle, Loader2 } from "lucide-react";
@@ -21,15 +21,16 @@ export type ContactFormAction = (
   formData: FormData,
 ) => Promise<FormState>;
 
-function SubmitButton({ label }: { label: string }) {
+function SubmitButton({ label, busy }: { label: string; busy: boolean }) {
   const { pending } = useFormStatus();
+  const waiting = pending || busy;
 
   return (
-    <Button type="submit" disabled={pending}>
-      {pending ? (
+    <Button type="submit" disabled={waiting}>
+      {waiting ? (
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
       ) : null}
-      {pending ? "Saving…" : label}
+      {pending ? "Saving…" : busy ? "Preparing photo…" : label}
     </Button>
   );
 }
@@ -51,6 +52,10 @@ export default function ContactForm({
   cancelHref: string;
 }) {
   const [state, formAction] = useActionState(action, EMPTY_FORM_STATE);
+  // The picked photo is converted asynchronously, and the hidden input still
+  // holds the old value until that lands. Submitting mid-conversion would
+  // silently save the previous photo, so the form waits it out.
+  const [photoBusy, setPhotoBusy] = useState(false);
 
   function valueFor(name: ContactScalarField): string {
     return state.values?.[name] ?? contact?.[name] ?? "";
@@ -60,7 +65,15 @@ export default function ContactForm({
   const addresses = state.addresses ?? contact?.addresses ?? [];
 
   return (
-    <form action={formAction} noValidate className="space-y-8">
+    <form
+      action={formAction}
+      noValidate
+      className="space-y-8"
+      // Disabling the button is not enough: Enter in a text field still submits.
+      onSubmit={(event) => {
+        if (photoBusy) event.preventDefault();
+      }}
+    >
       {state.status === "error" && state.message ? (
         <div
           role="alert"
@@ -97,6 +110,7 @@ export default function ContactForm({
                   defaultValue={valueFor(field.name)}
                   error={state.fieldErrors?.[field.name]}
                   contact={contact}
+                  onBusyChange={setPhotoBusy}
                 />
               ) : (
                 <Field
@@ -111,10 +125,10 @@ export default function ContactForm({
         </fieldset>
       ))}
 
-      <AddressFields addresses={addresses} />
+      <AddressFields addresses={addresses} errors={state.addressErrors} />
 
       <div className="flex items-center gap-2 border-t border-hairline pt-4">
-        <SubmitButton label={submitLabel} />
+        <SubmitButton label={submitLabel} busy={photoBusy} />
         <Link href={cancelHref} className={buttonClasses("secondary")}>
           Cancel
         </Link>
