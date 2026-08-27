@@ -54,6 +54,14 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [{ source: "/", destination: "/contacts", permanent: true }];
   },
+  experimental: {
+    serverActions: {
+      // A contact photo is submitted inside the form body as a base64 data URL.
+      // PhotoField shrinks one to avatar size first, so this is only headroom
+      // for the fallback path where a browser cannot repaint the image.
+      bodySizeLimit: "4mb",
+    },
+  },
   env: {
     NEXT_PUBLIC_APP_VERSION: appVersion,
     NEXT_PUBLIC_BUILD_NUMBER: buildNumber,

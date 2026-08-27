@@ -129,6 +129,50 @@ describe("ContactForm", () => {
     expect(action.mock.calls[0][1].get("photo")).toBe(src);
   });
 
+  it("rejects a file that is not an image", async () => {
+    renderForm(jest.fn());
+
+    await userEvent.upload(
+      screen.getByLabelText(/^photo/i),
+      new File(["nope"], "resume.pdf", { type: "application/pdf" }),
+      { applyAccept: false },
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /not an image.*PNG, JPEG, GIF, or WebP/i,
+    );
+    expect(photoPreview()).toBeNull();
+  });
+
+  it("rejects an image over 2 MB", async () => {
+    renderForm(jest.fn());
+
+    const tooBig = new File([new Uint8Array(2 * 1024 * 1024 + 1)], "huge.png", {
+      type: "image/png",
+    });
+    await userEvent.upload(screen.getByLabelText(/^photo/i), tooBig, {
+      applyAccept: false,
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /2\.0 MB\. Choose one under 2 MB/i,
+    );
+    expect(photoPreview()).toBeNull();
+  });
+
+  it("keeps an existing photo when a later pick is rejected", async () => {
+    renderForm(jest.fn(), makeContact({ photo: PHOTO }));
+
+    await userEvent.upload(
+      screen.getByLabelText(/^photo/i),
+      new File(["nope"], "resume.pdf", { type: "application/pdf" }),
+      { applyAccept: false },
+    );
+
+    await screen.findByRole("alert");
+    expect(photoPreview()).toHaveAttribute("src", PHOTO);
+  });
+
   it("clears the photo when the user removes it", async () => {
     const action = jest.fn<Promise<FormState>, [FormState, FormData]>(
       async () => ({ status: "idle" }),
