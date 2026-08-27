@@ -42,7 +42,9 @@ describe("ContactForm", () => {
     expect(screen.getByLabelText(/first name/i)).toHaveValue("Ada");
     expect(screen.getByLabelText(/^email/i)).toHaveValue("ada@example.com");
     // Nulls become empty inputs rather than the string "null".
-    expect(screen.getByLabelText(/street address/i)).toHaveValue("");
+    expect(screen.getByLabelText(/notes/i)).toHaveValue("");
+    // The contact's addresses come back as filled-in rows.
+    expect(screen.getByLabelText(/street address/i)).toHaveValue("1 Market St");
   });
 
   it("submits the entered values to the action", async () => {
@@ -179,7 +181,7 @@ describe("ContactForm", () => {
     );
     renderForm(action, makeContact({ photo: PHOTO }));
 
-    await userEvent.click(screen.getByRole("button", { name: /remove/i }));
+    await userEvent.click(screen.getByRole("button", { name: /remove photo/i }));
     expect(photoPreview()).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: /create contact/i }));
@@ -187,6 +189,67 @@ describe("ContactForm", () => {
 
     // Empty, not the old data URL: PUT then clears it on the API side too.
     expect(action.mock.calls[0][1].get("photo")).toBe("");
+  });
+
+  it("round-trips the addresses a contact already has", async () => {
+    const action = jest.fn<Promise<FormState>, [FormState, FormData]>(
+      async () => ({ status: "idle" }),
+    );
+    renderForm(action, makeContact());
+
+    expect(screen.getByLabelText(/^type/i)).toHaveValue("Work");
+    expect(screen.getByLabelText(/city/i)).toHaveValue("San Francisco");
+
+    await userEvent.click(screen.getByRole("button", { name: /create contact/i }));
+    await waitFor(() => expect(action).toHaveBeenCalled());
+
+    const formData = action.mock.calls[0][1];
+    expect(formData.get("addresses.0.type")).toBe("Work");
+    expect(formData.get("addresses.0.street")).toBe("1 Market St");
+  });
+
+  it("submits several addresses, each with its own type", async () => {
+    const action = jest.fn<Promise<FormState>, [FormState, FormData]>(
+      async () => ({ status: "idle" }),
+    );
+    renderForm(action, makeContact());
+
+    await userEvent.click(screen.getByRole("button", { name: /add address/i }));
+
+    const types = screen.getAllByLabelText(/^type/i);
+    expect(types).toHaveLength(2);
+    await userEvent.selectOptions(types[1], "Home");
+    await userEvent.type(screen.getAllByLabelText(/city/i)[1], "London");
+
+    await userEvent.click(screen.getByRole("button", { name: /create contact/i }));
+    await waitFor(() => expect(action).toHaveBeenCalled());
+
+    const formData = action.mock.calls[0][1];
+    expect(formData.get("addresses.0.type")).toBe("Work");
+    expect(formData.get("addresses.1.type")).toBe("Home");
+    expect(formData.get("addresses.1.city")).toBe("London");
+  });
+
+  it("drops an address the user removes", async () => {
+    const action = jest.fn<Promise<FormState>, [FormState, FormData]>(
+      async () => ({ status: "idle" }),
+    );
+    renderForm(action, makeContact());
+
+    await userEvent.click(screen.getByRole("button", { name: /remove address 1/i }));
+    expect(screen.queryByLabelText(/^type/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /create contact/i }));
+    await waitFor(() => expect(action).toHaveBeenCalled());
+
+    expect(action.mock.calls[0][1].get("addresses.0.street")).toBeNull();
+  });
+
+  it("starts with no address rows on a new contact", () => {
+    renderForm(jest.fn());
+
+    expect(screen.queryByLabelText(/^type/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/no addresses yet/i)).toBeInTheDocument();
   });
 
   it("links back out without submitting", () => {

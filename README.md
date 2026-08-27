@@ -65,8 +65,10 @@ Click a row to get here. It confirms the detail read path works end to end:
 - **Header** — avatar, name, and `Job title at Company`, with **Edit**
   (`/contacts/[id]/edit`) and a destructive **Delete** that asks before it acts.
 - **Field table** — email and phone rendered as `mailto:` / `tel:` links, then
-  company, job title, address, and notes. Empty optional fields show `—` rather
-  than collapsing, so the shape of the record stays readable.
+  company, job title, and notes. Empty optional fields show `—` rather than
+  collapsing, so the shape of the record stays readable.
+- **Addresses** — one card per type the contact actually has, in Home, Work,
+  Other order. A contact with none says so rather than showing empty rows.
 - **Metadata table** — `ID`, `Created`, and `Last updated` in UTC, monospaced.
 
 Hand-editing the URL to an ID that does not exist gives you the styled 404 page
@@ -133,6 +135,13 @@ e2e/                      Playwright specs (run against the real API)
 
 ## Conventions
 
+- **Addresses are a list, not fields.** A contact has many addresses, each its
+  own record with a `Home`/`Work`/`Other` type — mirroring the API's `addresses`
+  table rather than flattening it back into columns. `AddressFields` renders a
+  row per address and names the inputs by position (`addresses.0.city`), so they
+  stay ordinary form fields that submit without JavaScript; only adding and
+  removing rows needs the client. `formDataToAddresses` reassembles them on the
+  server and drops rows the user added but never filled in.
 - **Photos** — `PhotoField` reads the picked file into a base64 data URL and
   parks it in a hidden `photo` input, so it submits with the rest of the form.
   That is deliberate: the edit form is a `PUT` full replace, and the hidden

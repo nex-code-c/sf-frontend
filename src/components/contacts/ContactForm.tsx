@@ -6,12 +6,13 @@ import Link from "next/link";
 import { AlertCircle, Loader2 } from "lucide-react";
 import Field from "@/components/ui/Field";
 import PhotoField from "./PhotoField";
+import AddressFields from "./AddressFields";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import { CONTACT_FIELD_GROUPS } from "@/lib/contacts/schema";
 import {
   EMPTY_FORM_STATE,
   type Contact,
-  type ContactInput,
+  type ContactScalarField,
   type FormState,
 } from "@/lib/contacts/types";
 
@@ -51,9 +52,12 @@ export default function ContactForm({
 }) {
   const [state, formAction] = useActionState(action, EMPTY_FORM_STATE);
 
-  function valueFor(name: keyof ContactInput): string {
+  function valueFor(name: ContactScalarField): string {
     return state.values?.[name] ?? contact?.[name] ?? "";
   }
+
+  // A failed submit echoes the rows back, so ones the user added survive it.
+  const addresses = state.addresses ?? contact?.addresses ?? [];
 
   return (
     <form action={formAction} noValidate className="space-y-8">
@@ -106,6 +110,8 @@ export default function ContactForm({
           </div>
         </fieldset>
       ))}
+
+      <AddressFields addresses={addresses} />
 
       <div className="flex items-center gap-2 border-t border-hairline pt-4">
         <SubmitButton label={submitLabel} />

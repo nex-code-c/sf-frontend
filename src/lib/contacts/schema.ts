@@ -1,5 +1,11 @@
 import { z } from "zod";
-import type { ContactInput } from "./types";
+import {
+  ADDRESS_TYPES,
+  type AddressInput,
+  type AddressType,
+  type ContactInput,
+  type ContactScalarField,
+} from "./types";
 
 /**
  * Client/server-shared validation for the contact form.
@@ -27,6 +33,15 @@ function requiredText(max: number, label: string) {
     .min(1, `${label} is required`)
     .max(max, `${label} must be ${max} characters or fewer`);
 }
+
+export const addressInputSchema = z.object({
+  type: z.enum(ADDRESS_TYPES).default("Home"),
+  street: optionalText(300, "Street address"),
+  city: optionalText(120, "City"),
+  state: optionalText(120, "State"),
+  postal_code: optionalText(20, "Postal code"),
+  country: optionalText(120, "Country"),
+});
 
 export const contactInputSchema = z.object({
   first_name: requiredText(100, "First name"),
@@ -60,6 +75,7 @@ export const contactInputSchema = z.object({
     .transform((value) => value || null)
     .nullable()
     .default(null),
+  addresses: z.array(addressInputSchema).default([]),
 }) satisfies z.ZodType<ContactInput, unknown>;
 
 export type ContactFormValues = z.input<typeof contactInputSchema>;
@@ -67,12 +83,12 @@ export type ContactFormValues = z.input<typeof contactInputSchema>;
 /** Collapse a ZodError into one message per field, keyed by input name. */
 export function zodFieldErrors(
   error: z.ZodError,
-): Partial<Record<keyof ContactInput, string>> {
-  const fieldErrors: Partial<Record<keyof ContactInput, string>> = {};
+): Partial<Record<ContactScalarField, string>> {
+  const fieldErrors: Partial<Record<ContactScalarField, string>> = {};
   for (const issue of error.issues) {
     const key = issue.path[0];
     if (typeof key === "string" && !(key in fieldErrors)) {
-      fieldErrors[key as keyof ContactInput] = issue.message;
+      fieldErrors[key as ContactScalarField] = issue.message;
     }
   }
   return fieldErrors;
@@ -83,7 +99,7 @@ export function zodFieldErrors(
 /* ------------------------------------------------------------------ */
 
 export interface ContactFieldSpec {
-  name: keyof ContactInput;
+  name: string;
   label: string;
   type?: "text" | "email" | "tel" | "textarea" | "photo";
   required?: boolean;
@@ -94,10 +110,13 @@ export interface ContactFieldSpec {
   wide?: boolean;
 }
 
+/** A spec for one of the contact's own fields, so form state stays typed. */
+export type ContactScalarFieldSpec = ContactFieldSpec & { name: ContactScalarField };
+
 export interface ContactFieldGroup {
   title: string;
   description: string;
-  fields: ContactFieldSpec[];
+  fields: ContactScalarFieldSpec[];
 }
 
 export const CONTACT_FIELD_GROUPS: ContactFieldGroup[] = [
@@ -175,48 +194,6 @@ export const CONTACT_FIELD_GROUPS: ContactFieldGroup[] = [
     ],
   },
   {
-    title: "Address",
-    description: "Optional postal details.",
-    fields: [
-      {
-        name: "address",
-        label: "Street address",
-        maxLength: 300,
-        placeholder: "1 Market St, Suite 400",
-        autoComplete: "street-address",
-        wide: true,
-      },
-      {
-        name: "city",
-        label: "City",
-        maxLength: 120,
-        placeholder: "San Francisco",
-        autoComplete: "address-level2",
-      },
-      {
-        name: "state",
-        label: "State / region",
-        maxLength: 120,
-        placeholder: "CA",
-        autoComplete: "address-level1",
-      },
-      {
-        name: "postal_code",
-        label: "Postal code",
-        maxLength: 20,
-        placeholder: "94105",
-        autoComplete: "postal-code",
-      },
-      {
-        name: "country",
-        label: "Country",
-        maxLength: 120,
-        placeholder: "USA",
-        autoComplete: "country-name",
-      },
-    ],
-  },
-  {
     title: "Notes",
     description: "Anything worth remembering. No length limit.",
     fields: [
@@ -232,18 +209,64 @@ export const CONTACT_FIELD_GROUPS: ContactFieldGroup[] = [
   },
 ];
 
-export const CONTACT_FIELDS: ContactFieldSpec[] = CONTACT_FIELD_GROUPS.flatMap(
+export const CONTACT_FIELDS: ContactScalarFieldSpec[] = CONTACT_FIELD_GROUPS.flatMap(
   (group) => group.fields,
 );
 
-/** Pull the contact fields out of a submitted form, as raw strings. */
+/** Pull the contact's scalar fields out of a submitted form, as raw strings. */
 export function formDataToValues(
   formData: FormData,
-): Record<keyof ContactInput, string> {
+): Record<ContactScalarField, string> {
   return Object.fromEntries(
     CONTACT_FIELDS.map((field) => [
       field.name,
       String(formData.get(field.name) ?? ""),
     ]),
-  ) as Record<keyof ContactInput, string>;
+  ) as Record<ContactScalarField, string>;
+}
+
+/** The address inputs, named `addresses.0.city` and so on. */
+export const ADDRESS_FIELDS = [
+  { name: "street", label: "Street address", maxLength: 300, placeholder: "1 Market St, Suite 400", autoComplete: "street-address", wide: true },
+  { name: "city", label: "City", maxLength: 120, placeholder: "San Francisco", autoComplete: "address-level2" },
+  { name: "state", label: "State / region", maxLength: 120, placeholder: "CA", autoComplete: "address-level1" },
+  { name: "postal_code", label: "Postal code", maxLength: 20, placeholder: "94105", autoComplete: "postal-code" },
+  { name: "country", label: "Country", maxLength: 120, placeholder: "USA", autoComplete: "country-name" },
+] as const satisfies readonly (ContactFieldSpec & { name: keyof AddressInput })[];
+
+const ADDRESS_INPUT = /^addresses\.(\d+)\.([a-z_]+)$/;
+
+/**
+ * Rebuild the address rows from a submitted form.
+ *
+ * The inputs are named by position (`addresses.0.city`), which keeps them plain
+ * form fields that submit without JavaScript. Rows the user added but never
+ * filled in are dropped, so an empty row is not saved as a blank address.
+ */
+export function formDataToAddresses(formData: FormData): AddressInput[] {
+  const rows = new Map<number, Record<string, string>>();
+
+  for (const [key, value] of formData.entries()) {
+    const match = ADDRESS_INPUT.exec(key);
+    if (!match) continue;
+    const index = Number(match[1]);
+    const row = rows.get(index) ?? {};
+    row[match[2]] = String(value);
+    rows.set(index, row);
+  }
+
+  return [...rows.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, row]) => row)
+    .filter((row) => ADDRESS_FIELDS.some((field) => row[field.name]?.trim()))
+    .map((row) => ({
+      type: (ADDRESS_TYPES as readonly string[]).includes(row.type)
+        ? (row.type as AddressType)
+        : "Home",
+      street: row.street?.trim() || null,
+      city: row.city?.trim() || null,
+      state: row.state?.trim() || null,
+      postal_code: row.postal_code?.trim() || null,
+      country: row.country?.trim() || null,
+    }));
 }

@@ -9,14 +9,17 @@ const CONTROL =
  */
 export default function Field({
   field,
+  name = field.name,
   defaultValue,
   error,
 }: {
   field: ContactFieldSpec;
+  /** Submitted name, when it differs from the spec — e.g. `addresses.0.city`. */
+  name?: string;
   defaultValue?: string;
   error?: string;
 }) {
-  const id = `field-${field.name}`;
+  const id = `field-${name}`;
   const errorId = `${id}-error`;
   const borderClass = error
     ? "border-destructive focus:border-destructive"
@@ -24,7 +27,7 @@ export default function Field({
 
   const shared = {
     id,
-    name: field.name,
+    name,
     defaultValue,
     maxLength: field.maxLength,
     required: field.required,

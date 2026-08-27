@@ -195,6 +195,7 @@ export default function PhotoField({
               <button
                 type="button"
                 onClick={clear}
+                aria-label="Remove photo"
                 className={buttonClasses("ghost", "sm")}
               >
                 <Trash2 className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
