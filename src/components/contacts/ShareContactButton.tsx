@@ -46,7 +46,7 @@ export default function ShareContactButton({ contact }: { contact: Contact }) {
         onClick={(event) => {
           if (event.target === dialog.current) dialog.current?.close();
         }}
-        className="m-auto w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-border bg-card p-0 text-foreground backdrop:bg-black/60"
+        className="m-auto w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-border bg-card p-0 text-foreground backdrop:bg-black/60"
       >
         <div className="relative flex flex-col items-center gap-4 px-6 pb-6 pt-8">
           <button
@@ -70,9 +70,11 @@ export default function ShareContactButton({ contact }: { contact: Contact }) {
           </div>
 
           {/* A QR code only scans reliably on white, so it keeps its own ground
-              in both themes rather than inheriting the card's. */}
+              in both themes rather than inheriting the card's. A contact with
+              addresses runs to ~65 modules, which needs the size to stay
+              scannable from a phone held at arm's length. */}
           <div className="rounded-xl bg-white p-3">
-            <QRCodeSVG value={vcard} size={192} level="M" marginSize={0} />
+            <QRCodeSVG value={vcard} size={256} level="M" marginSize={0} />
           </div>
 
           <p className="text-[13px] text-muted-foreground">Scan to save contact</p>
