@@ -29,6 +29,19 @@ function invalidate(contactId?: number) {
 const UNREACHABLE =
   "Could not reach the Contacts API. Check that the backend is running.";
 
+/** Map address errors keyed by filtered-list index back to the original row. */
+function remapAddressErrors(
+  errors: Record<number, string>,
+  filledIndexes: number[],
+): Record<number, string> {
+  const remapped: Record<number, string> = {};
+  for (const [key, message] of Object.entries(errors)) {
+    const originalIndex = filledIndexes[Number(key)];
+    if (originalIndex !== undefined) remapped[originalIndex] = message;
+  }
+  return remapped;
+}
+
 /**
  * Create (when `contactId` is null) or fully replace a contact.
  *
@@ -55,10 +68,16 @@ export async function saveContactAction(
   }
 
   // Rows the user added but never filled in are not addresses worth saving.
-  const input = {
-    ...parsed.data,
-    addresses: parsed.data.addresses.filter(isFilledAddress),
-  };
+  // Track which original row each kept row came from, so an API error
+  // reported against this filtered list can be pointed back at the row the
+  // user is actually looking at.
+  const filledIndexes: number[] = [];
+  const filteredAddresses = parsed.data.addresses.filter((address, index) => {
+    const keep = isFilledAddress(address);
+    if (keep) filledIndexes.push(index);
+    return keep;
+  });
+  const input = { ...parsed.data, addresses: filteredAddresses };
 
   let saved: Contact;
   try {
@@ -83,10 +102,12 @@ export async function saveContactAction(
         };
       }
       if (error.status === 422) {
+        const { fieldErrors, addressErrors } = toFieldErrors(error);
         return {
           status: "error",
           message: "The API rejected these values.",
-          ...toFieldErrors(error),
+          fieldErrors,
+          addressErrors: remapAddressErrors(addressErrors, filledIndexes),
           values,
           addresses,
         };
