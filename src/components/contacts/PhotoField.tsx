@@ -76,13 +76,21 @@ function hasTransparency(context: CanvasRenderingContext2D, width: number, heigh
  * not proof that the bytes are an image, and keeping the original on failure
  * would store something no `<img>` can render.
  */
-async function toAvatarDataUrl(dataUrl: string): Promise<string> {
+async function toAvatarDataUrl(dataUrl: string, mimeType: string): Promise<string> {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
   // No canvas to paint on: keep the photo rather than dropping it.
   if (!context) return dataUrl;
 
   const image = await loadImage(dataUrl);
+
+  // Canvas only ever paints a single frame. Resizing an animated GIF or WebP
+  // through it would silently flatten the animation, so those formats are
+  // kept as-is (already capped at MAX_BYTES) instead of being re-encoded.
+  if (mimeType === "image/gif" || mimeType === "image/webp") {
+    return dataUrl;
+  }
+
   const scale = Math.min(1, MAX_EDGE / Math.max(image.width, image.height));
 
   canvas.width = Math.max(1, Math.round(image.width * scale));
@@ -165,7 +173,7 @@ export default function PhotoField({
 
     setBusy(true);
     try {
-      const dataUrl = await toAvatarDataUrl(await readAsDataUrl(file));
+      const dataUrl = await toAvatarDataUrl(await readAsDataUrl(file), file.type);
       if (pick !== latestPick.current) return;
       setPhoto(dataUrl);
       setReadError(null);
